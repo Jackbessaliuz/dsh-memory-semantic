@@ -1,0 +1,57 @@
+{
+  "name": "dsh-memory-semantic",
+  "version": "0.1.0",
+  "description": "meow-memory 语义检索增强层：只读记忆库，本地 Ollama embedding (bge-m3) + BM25/向量 RRF 融合，提供 memory_semantic / memory_graph / recall_turns 三个工具；独立插件，绝不写入上游。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jackbessaliuz/dsh-memory-semantic.git"
+  },
+  "homepage": "https://github.com/Jackbessaliuz/dsh-memory-semantic#readme",
+  "bugs": {
+    "url": "https://github.com/Jackbessaliuz/dsh-memory-semantic/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "memory",
+    "semantic-search",
+    "embeddings",
+    "ollama",
+    "bge-m3",
+    "bm25",
+    "rrf",
+    "knowledge-graph",
+    "meow-memory"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": ["react"],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}

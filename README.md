@@ -1,0 +1,196 @@
+# dsh-memory-semantic
+
+> 给 [meow-memory](https://www.npmjs.com/package/meow-memory) 记忆系统加一层**语义检索**：让"记过的"变成"想得起来的"。
+
+一个 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）插件。它**只读**记忆库，在本机建向量索引，给 AI 补上三件事：**语义检索**、**记忆图谱**、**对话原文召回**。
+
+> 📌 **图谱来源**：本项目的轮次记忆数据模型、召回算法与 surface-takeover range 语义**移植自 [graph-memory](https://github.com/adoresever/graph-memory)**（MIT License，© 2026 adoresever）。详见文末 [Credits](#credits)。
+
+[English](README.en.md)
+
+---
+
+## 一句话：它是什么
+
+**meow-memory 负责"记住"，dsh-memory-semantic 负责"想起来"。**
+
+打个比方：meow-memory 是**书架**——把你说过的话、做过的事、定过的规矩，分门别类放进格子。
+dsh-memory-semantic 是**图书管理员**——它不往书架上放任何东西，但你说"我上次提的那个关于时区的事"，
+它能把那本书抽出来递给你，**哪怕那本书的标题里根本没有"时区"两个字**。
+
+### 两个插件怎么配合
+
+| 你能看到的现象 | 谁在干活 |
+|---|---|
+| AI 记住你说过的话，换个会话还记得 | **meow-memory**（写入、分层、整理） |
+| AI 换个说法也找得到那条记忆 | **dsh-memory-semantic**（语义检索） |
+| AI 知道哪些记忆是重点、哪些是一类 | **dsh-memory-semantic**（记忆图谱） |
+| 长对话被折叠后，还能翻回原话 | **dsh-memory-semantic**（对话原文召回） |
+
+**装一个能用，装两个才好用。** 只装 meow-memory：记忆在，但你换个说法它就找不到。
+只装本插件：它没有东西可找（记忆库是空的）。
+
+### 为什么不做成"直接装现成的图谱插件"？
+
+有人会问：已经有做类似事情的开源项目（比如 [graph-memory](https://github.com/adoresever/graph-memory)），
+**为什么不直接装它？**
+
+因为**直接装会让你的记忆分裂成两套**：
+
+|  | 直接装 graph-memory | 本插件（移植设计） |
+|---|---|---|
+| 记忆存在哪 | 它**自建一套** `gm_*` 库（TASK/SKILL/EVENT ＋ 轮次） | **同一份** meow-memory 记忆库之上 |
+| 与 meow-memory 的关系 | 并行、**互不读写** | 只读复用，整理／索引／图谱全认 |
+| 语义检索靠什么 | 需要**外部 API key**（没 key 就降级成纯关键词） | 本机 Ollama，**零成本、数据不出门** |
+| 能不能自己改 | 是 npm 包，改行为就得 fork、背更新债 | 自己的源码，改一行是一行 |
+| 上游大改怎么办 | 只能被动跟（它 1.5.8→1.6 把概念图**整个换掉了**） | 只移植三样：轮次数据模型、召回算法、接管语义 |
+
+**一句话**：那会让 AI 同时拥有两个**互不相认**的记忆库。
+而对一个"想要被长久记住"的 AI 来说，**记忆必须唯一、可带走、跨模型连续**——
+所以本项目的做法是**移植设计**（算法与数据模型），把能力长在**同一份记忆**上。
+这也正是要在 [Credits](#credits) 里郑重署名上游的原因。
+
+---
+
+## 它解决什么问题
+
+关键词检索有三个绕不过去的坎：
+
+1. **换个说法就找不到。** 记忆里写的是"thresholdRatio 调低"，你搜"上下文太满"——字面对不上，命中为零。
+2. **不知道哪条最重要。** 记忆多了以后，"哪些是枢纽、哪些是细枝末节"靠人肉翻不动。
+3. **摘要之后细节就没了。** 长对话被压缩成摘要，等到真需要原话时已经翻不回去。
+
+本插件在**同一份记忆库**上补这三件事，且**不改变原系统**。
+
+## 配套使用须知（重要）
+
+本插件是 meow-memory 的**卫星**，不是替代品。装之前请先确认这几件事。
+
+### ① 它必须和 meow-memory 一起用
+
+本插件**不含任何记忆写入能力**——记忆的产生、分层、整理（dream）全部由 meow-memory 负责。
+单独装它，记忆库里没有东西可检索，等于空转。
+
+### ② 它只读，绝不写入
+
+|  | meow-memory | dsh-memory-semantic |
+|---|---|---|
+| 角色 | **基座**：记忆的写入、分层、整理 | **增强层**：只读检索与召回 |
+| 数据库 | `<工作区>/.dsh-meow/memory.db` | 自己的 `<工作区>/.dsh-semantic/*` |
+| 本插件对它的影响 | —— | **绝不写入、绝不修改** |
+
+两条硬规矩：
+
+- 本插件**始终以只读方式**打开记忆库：不建表、不写行、不改 schema。
+- **卸载本插件后，meow-memory 的一切功能与数据原样不受影响。**
+
+### ③ 首次使用会自动建索引
+
+第一次调用 `memory_semantic` 时，插件会把现有记忆**全量嵌入一遍**建立向量索引（几百条的库通常几十秒内完成）。
+之后新增的记忆会**增量补嵌**，不需要你操心。
+
+### ④ Ollama 是可选依赖
+
+- **装了**：走"向量 + BM25"融合检索，召回质量更好。
+- **没装 / 没开**：自动降级为**纯 BM25**，功能不中断，只是语义泛化弱一些。
+
+插件不会因为你没装 Ollama 而报错或阻塞；`autoStart: true` 时它会在后台尝试把 Ollama 拉起来（**不阻塞本次对话**）。
+
+### ⑤ 数据都在你自己的工作区
+
+向量索引、图谱、轮次库都写在 `<工作区>/.dsh-semantic/` 下，删除该目录即可让本插件"从零开始"，不影响 meow-memory 的任何数据。
+
+## 功能
+
+### 三个工具
+
+| 工具 | 作用 |
+|---|---|
+| `memory_semantic` | 语义检索记忆：本地向量 + BM25，RRF 融合后返回最相关条目 |
+| `memory_graph` | 记忆图谱：全局重要性（加权 PageRank）、知识域（社区）、相似邻居 |
+| `recall_turns` | **对话原文**检索：按问题找回更早对话里的逐字问答 |
+
+### 几条自动接线
+
+- **跨会话接力**：新会话开场说"继续"时，自动把上一个会话的尾巴接进来——不必手打上下文。
+- **动作触发注入**：命中特定动作（如改配置、动数据）时，自动检索相关红线与教训并附加到下一次请求。
+- **注入去重**：同一条记忆在一次会话里只注入一次，避免反复灌水。
+- **上下文组装**：按体积上限把召回的原文插在**当前提问之前**，不打断对话流。
+
+### 设置页
+
+安装后会在 DSH 设置里多出一页「**语义记忆**」，可以看到：向量引擎是否可用、索引条数、轮次库规模、图谱规模、当前生效的检索与图谱参数，以及宿主压缩档位的建议值。
+
+其中 **Ollama 自动拉起开关**可以在设置页直接切换，**即时生效**（写入插件自己的 `~/.dsh/dsh-memory-semantic.runtime.json`，不触碰任何宿主配置）。
+
+## 安装
+
+### 方式一：命令行安装（CLI / 网页端 profile）
+
+```
+dsh plugin --profile <profile-name> add github:Jackbessaliuz/dsh-memory-semantic
+```
+
+> `dsh plugin` 会把参数**透传给 profile 里的 pnpm**，所以 `add` / `remove` / `update` 都能用。
+> ⚠️ **桌面端（Electron）的 `desktop` profile 由应用独占，命令行不能操作它**——桌面端请在应用内的插件管理界面安装。
+
+本包声明了 `dsh.bundle.patch`，安装器/reconcile 会**自动**把它加入当前 profile 的 bundles，**重启 DSH 后生效**（host 侧插件不会热重载）。
+
+### 方式二：本地开发（link）
+
+```bash
+# 在 profile 目录里
+npm i link:<本仓库路径>
+```
+
+然后在 profile 的 `cordis.patch.yml` 里手工 insert 一条 `dsh-memory-semantic`。
+
+> 注意：同一条目**不要既走 bundles 又手工 insert**，会报重复 entry id。
+
+## 配置
+
+所有可调参数都集中在 profile patch 的 `config:` 段，无需改代码：
+
+```yaml
+- id: dsh-memory-semantic
+  name: 'dsh-memory-semantic'
+  config:
+    ollama:
+      url: http://127.0.0.1:11434
+      model: bge-m3
+      autoStart: false        # true = 探测不到就后台拉起 Ollama
+      executablePath: ''      # 绿色版/自定义安装可显式指定
+      probeTimeoutMs: 800
+      warmupWaitMs: 0         # 0 = 点火不等人，本轮直接走 BM25
+      embedBatch: 32
+    retrieval:
+      rrfK: 60                # RRF 融合常数
+      rrfPool: 10             # 每路候选池
+      outputChars: 220        # 单条记忆返回的最大字符数
+      queryInstruction: '为这个句子生成表示以用于检索相关文章：'
+    graph:
+      topK: 8
+      edgeThreshold: 0.62     # 余弦阈值：越高社区越碎
+      damping: 0.85
+      prIterations: 50
+      lpMaxIter: 50
+```
+
+**任何非法值都会安静地退回默认值**——配置写错不会让插件加载失败。
+
+## 数据与隐私
+
+- **全部数据都在本机**：向量索引、图谱、轮次库都写在你自己的工作区 `.dsh-semantic/` 下。
+- **embedding 请求只发给本机 Ollama**（默认 `127.0.0.1:11434`）。
+- **记忆库只读**，本插件不会改动 meow-memory 的任何数据。
+- 内置**脱敏闸门**：写入轮次库前会过滤 GitHub token / API key / 私钥等敏感串，避免密钥被记进检索库。
+
+## Credits
+
+本项目的**轮次记忆数据模型、召回算法与 surface-takeover range 语义**移植自
+[graph-memory](https://github.com/adoresever/graph-memory)（MIT License，© 2026 adoresever）。
+骨架设计参考了它，实现按 DSH 的插件接口重写；在此致谢。
+
+## License
+
+[MIT](LICENSE)

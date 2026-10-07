@@ -1,0 +1,4 @@
+# dsh-memory-semantic bundle patch: meow-memory 语义检索增强层（独立只读，可并入上游）
+- insert:
+    - id: dsh-memory-semantic
+      name: 'dsh-memory-semantic'
