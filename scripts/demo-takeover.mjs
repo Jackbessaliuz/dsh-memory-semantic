@@ -23,7 +23,12 @@ import { projectCompletedTurns, isRealUserTurn } from '../lib/turns/project.js'
 import { recallTurns, visibleKey } from '../lib/turns/recall.js'
 import { embedTexts, embedQuery, ollamaHealthy } from '../lib/turns/embed.js'
 
-const DSH_PKG = process.env.DSH_PKG ?? 'C:/Users/jackb/AppData/Roaming/npm/node_modules/@deepseek-ai/dsh'
+// 2026-10-08：不再硬编码个人安装路径——优先环境变量，其次按运行环境推断（Windows 走
+// %APPDATA%\npm，类 Unix 走 ~/.npm-global），最后交给调用方用 DSH_PKG 显式指定。
+const DSH_PKG = process.env.DSH_PKG
+  ?? (process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'npm', 'node_modules', '@deepseek-ai', 'dsh')
+    : path.join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.npm-global', 'lib', 'node_modules', '@deepseek-ai', 'dsh'))
 const NM = path.join(DSH_PKG, 'node_modules/@deepseek-ai')
 const { foldSurface, deriveEventMessage } = await import(pathToFileURL(path.join(NM, 'dsh-session/lib/index.js')).href)
 const { estimateMessage } = await import(pathToFileURL(path.join(NM, 'dsh-token-meter/lib/types/estimate.js')).href)
