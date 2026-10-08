@@ -287,11 +287,37 @@ const asyncTests = [
     await runtime.handle(fakeSession({ id: 'session-shape', cwd: ws, events, route: { provider: 'deepseek', model: 'deepseek-flash', reasoningEffort: 'off' } }), events[2])
     eq(llm.calls.length, 1, '只调一次模型')
     const call = llm.calls[0]
-    eq([call.provider, call.model, call.reasoningEffort, call.maxTokens], ['deepseek', 'deepseek-flash', 'off', 4000])
+    eq([call.provider, call.model, call.maxTokens], ['deepseek', 'deepseek-flash', 4000])
+    eq(call.reasoningEffort, 'low', '抽取固定用温和档，不沿用会话档位（会话这里是 off）')
     eq(call.tools.map((x) => x.name), ['submit_result'])
     eq(call.messages.map((m) => m.role), ['system', 'user'])
     ok(String(call.messages[1].content[0].text).includes('问'), 'user prompt 含本轮提问')
     ok(!('toolChoice' in call) && !('tool_choice' in call), '不传 tool_choice')
+    runtime.dispose()
+  }],
+
+  ['抽取档位不沿用会话：会话开 max（思考拉满），抽取仍走 low', async () => {
+    const ws = freshWorkspace('effort-cap')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({ llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [] })
+    const events = [userMsg(0, '问'), answerMsg(1, '答'), turnEnd(2)]
+    await runtime.handle(fakeSession({ id: 'session-effort', cwd: ws, events, route: { provider: 'deepseek-account', model: 'deepseek-flash', reasoningEffort: 'max' } }), events[2])
+    eq(llm.calls[0].reasoningEffort, 'low', '会话是 max，抽取必须用 low')
+    // 队列里仍记会话档位（便于追溯），但实际调用用的是覆盖后的档
+    const db = openTurnsDb(ws, { readOnly: true })
+    const q = db.prepare('SELECT effort FROM tm_extraction_queue LIMIT 1').get()
+    eq(q?.effort, 'max', '队列保留会话档位用于追溯')
+    db.close(); runtime.dispose()
+  }],
+
+  ['显式配置优先：turns.live.reasoningEffort=high 时不覆盖', async () => {
+    const ws = freshWorkspace('effort-explicit')
+    const llm = fakeLlm()
+    const cfg = normalizeLiveConfig({ turns: { live: { reasoningEffort: 'high' } } })
+    const runtime = createSinkRuntime({ llm, cfg, logger: null, embed: async () => [] })
+    const events = [userMsg(0, '问'), answerMsg(1, '答'), turnEnd(2)]
+    await runtime.handle(fakeSession({ id: 'session-effort2', cwd: ws, events }), events[2])
+    eq(llm.calls[0].reasoningEffort, 'high', '显式配置优先于默认档')
     runtime.dispose()
   }],
 
