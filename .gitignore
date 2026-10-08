@@ -12,3 +12,6 @@ node_modules/
 # 运行期数据（向量索引/图谱/轮次库/接力状态/开关覆盖）
 .dsh-semantic/
 .dsh-meow/
+
+# 打包产物（发 release 时 npm pack 生成，别提交）
+*.tgz

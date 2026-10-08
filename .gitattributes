@@ -1,0 +1,13 @@
+# 行尾规范：仓库里一律 LF
+#
+# 为什么需要它（2026-10-08 踩到）：Windows 上 edit 工具写出来的是 CRLF，
+# 而之前的提交被 git 规范化成了 LF；一旦本地 `core.autocrlf=false`，
+# git 就会把「工作区 CRLF vs 仓库 LF」报成一整份文件被改写——
+# 于是每次 export 之后 `发布前核对.mjs` 都会误报一堆「修正没同步过去」。
+# 声明 text=auto/eol=lf 之后，git 在 add 时自动归一化，两边都干净。
+* text=auto eol=lf
+
+# 二进制/资源文件不做行尾转换
+*.png binary
+*.jpg binary
+*.tgz binary
