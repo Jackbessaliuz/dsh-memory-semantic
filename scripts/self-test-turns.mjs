@@ -92,6 +92,27 @@ t('改摘要 → 同 id、内容更新、不新增行', () => {
   eq(updated.summary, '备份并开始记忆沙龙（改）')
   eq(statsOf(db).turns, 1)
 })
+t('不传 turnIndex → SQL 原子分配（并发路径不会撞号，2026-10-08 实测踩过）', () => {
+  const ws2 = path.join(workspace, '..', 'self-test-turns-atomic')
+  fs.rmSync(ws2, { recursive: true, force: true })
+  fs.mkdirSync(ws2, { recursive: true })
+  const db2 = openTurnsDb(ws2)
+  const mk = (us) => ({ sessionId: 'session-ai', summary: '摘要', outcome: 'completed', userSeq: us, answerSeq: us + 1, userText: '问', answerText: '答' })
+  // 模拟"在线抽取"与"启动恢复"两条路径同时写入：都不传编号，各写各的
+  const a = upsertTurn(db2, mk(1))
+  const b = upsertTurn(db2, mk(3))
+  const c = upsertTurn(db2, mk(5))
+  eq([a.turnIndex, b.turnIndex, c.turnIndex], [0, 1, 2], '三条必须分到不同编号')
+  // 幂等重写同一轮：编号保持不变（否则每写一次就跳号）
+  const again = upsertTurn(db2, { ...mk(1), summary: '改过的摘要' })
+  eq(again.turnIndex, 0, '重写不该改编号')
+  eq(again.summary, '改过的摘要', '内容该更新')
+  // 会话隔离：另一个会话从 0 重新开始
+  const other = upsertTurn(db2, { ...mk(7), sessionId: 'session-other' })
+  eq(other.turnIndex, 0, '按会话隔离')
+  db2.close()
+})
+
 t('空 summary 抛错', () => throws(() => upsertTurn(db, { ...base, summary: '   ' }), 'summary'))
 t('非法 outcome 抛错（应用层）', () => throws(() => upsertTurn(db, { ...base, outcome: 'done' }), 'outcome'))
 t('非法 outcome 直插被 CHECK 拒绝（DB 层）', () => throws(() => {
