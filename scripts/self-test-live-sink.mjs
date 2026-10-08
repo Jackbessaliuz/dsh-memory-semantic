@@ -246,6 +246,31 @@ const asyncTests = [
     runtime.dispose()
   }],
 
+  ['恢复：积压多条时编号重新分配（实测踩过：两条都记成 #23）', async () => {
+    const ws = freshWorkspace('recover-renumber')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({ llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [] })
+    const db0 = openTurnsDb(ws)
+    // 模拟"抽取一直失败所以编号一直没推进"：两条待抽都记着同一个 turnIndex=23
+    enqueueExtraction(db0, { sessionId: 'session-rn', turnIndex: 23, userSeq: 10, answerSeq: 11, workspace: ws, provider: 'p', model: 'm' })
+    enqueueExtraction(db0, { sessionId: 'session-rn', turnIndex: 23, userSeq: 20, answerSeq: 21, workspace: ws, provider: 'p', model: 'm' })
+    db0.close()
+    const fakeLog = () => ({
+      turns: [
+        { turnIndex: 23, userSeq: 10, answerSeq: 11, userText: '第一轮积压', answerText: '答一' },
+        { turnIndex: 23, userSeq: 20, answerSeq: 21, userText: '第二轮积压', answerText: '答二' },
+      ],
+    })
+    await runtime.recoverDue(ws, fakeLog)
+    const db1 = openTurnsDb(ws, { readOnly: true })
+    const rows = db1.prepare('SELECT turn_index, user_text FROM tm_turns WHERE session_id=? ORDER BY turn_index').all('session-rn')
+    eq(rows.map((r) => r.turn_index), [0, 1], '编号必须重新分配成 0/1，而不是重复的 23/23')
+    eq(rows.map((r) => r.user_text), ['第一轮积压', '第二轮积压'], '内容按原顺序落库')
+    eq(extractionQueueStats(db1).succeeded, 2, '两条都应记为成功')
+    db1.close()
+    runtime.dispose()
+  }],
+
   ['恢复：队列表里没有路由 → 跳过（不瞎猜模型）', async () => {
     const ws = freshWorkspace('recover-noroute')
     const llm = fakeLlm()
