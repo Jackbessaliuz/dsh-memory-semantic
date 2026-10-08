@@ -114,6 +114,20 @@ then insert a `dsh-memory-semantic` entry into the profile's `cordis.patch.yml` 
 
 > Do not do both — bundles *and* a manual insert for the same entry will fail with a duplicate entry id.
 
+## Troubleshooting
+
+- **`allowBuilds` / blocked build script** — pnpm 10+ blocks install-time scripts. This package has none (plain JS), but a sibling in the same install may trigger it — most often `meow-memory`, which ships a `prepare`. Follow pnpm's printed instruction, add the key to the profile's `pnpm-workspace.yaml`, then re-run.
+- **Official desktop app** — its `desktop` profile is owned by the app; install through the in-app plugin manager, not the CLI.
+- **Installed but nothing happens** — restart DSH: host-side plugins are not hot-reloaded.
+- **Search feels dumber than expected** — Ollama is not running, so it fell back to keyword-only search. That is by design, not a failure.
+
+### For an AI assistant installing this
+
+1. Make sure `meow-memory` is present first — this plugin only reads its database and does nothing on its own.
+2. `dsh plugin --profile <profile> add github:Jackbessaliuz/dsh-memory-semantic`
+3. Restart DSH afterwards.
+4. Verify: `dsh-memory-semantic` must appear **exactly once** in `dsh --profile <profile> --dump-config` (not available on the official desktop app — use its plugin manager instead).
+
 ## Configuration
 
 Every knob lives in the profile patch `config:` section; no code changes needed:
