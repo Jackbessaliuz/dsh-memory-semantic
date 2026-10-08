@@ -126,7 +126,7 @@ for (const session of targets) {
       answerText: turn.answerText,
     })
     replaceTriples(db, record.id, log.header.id, outcome.result.triples)
-    newSummaries.push({ id: record.id, summary: outcome.result.summary })
+    newSummaries.push({ id: record.id, text: String(turn.userText || outcome.result.summary) })
     sessionNew += 1
     totalNew += 1
     console.log(`  ✓ 轮 ${String(turn.turnIndex).padStart(2)}  [${outcome.result.outcome}·${outcome.via}] ${outcome.result.summary.slice(0, 52)}…  (${outcome.usage?.prompt_tokens ?? '-'}→${outcome.usage?.completion_tokens ?? '-'})`)
@@ -136,9 +136,9 @@ for (const session of targets) {
   // 向量：为该会话新入库的摘要批量补嵌
   if (!DRY && vectorOk && newSummaries.length) {
     try {
-      const vectors = await embedTexts(newSummaries.map((s) => s.summary))
-      newSummaries.forEach((s, i) => saveTurnVector(db, s.id, s.summary, vectors[i]))
-      console.log(`  → 已补 ${newSummaries.length} 条摘要向量`)
+      const vectors = await embedTexts(newSummaries.map((s) => s.text))
+      newSummaries.forEach((s, i) => saveTurnVector(db, s.id, s.text, vectors[i]))
+      console.log(`  → 已补 ${newSummaries.length} 条原文向量`)
     } catch (error) {
       console.log(`  [警告] 向量补嵌失败（不影响已入库内容）：${error.message}`)
     }
