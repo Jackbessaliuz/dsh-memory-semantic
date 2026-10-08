@@ -197,6 +197,38 @@ const asyncTests = [
 
   /* ── 集成：真 sqlite + 假 llm ─────────────────────────────────── */
 
+  ['恢复巡检：首次跑、窗口内不重复、窗口外再来一次（2026-10-08 冷却滞留修复）', async () => {
+    let clock = 1_700_000_000_000
+    const ws = freshWorkspace('sweep')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({
+      llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [], now: () => clock,
+    })
+    const session = fakeSession({
+      id: 'session-sweep', cwd: ws,
+      events: [userMsg(0, '问'), answerMsg(1, '答'), turnEnd(2)],
+    })
+
+    // ① 第一次 turn/end：该工作区从没巡检过（last=0）→ 必须跑一次（＝启动恢复那一跳）
+    runtime.onSessionEvent(session, turnEnd(2))
+    await settle()
+    eq(runtime.state().recoverSweeps, 1, '首次应巡检一次')
+
+    // ② 紧接着再触发（距上次不到窗口）→ 不该重复
+    clock += 60 * 1000
+    runtime.onSessionEvent(session, turnEnd(2))
+    await settle()
+    eq(runtime.state().recoverSweeps, 1, '窗口内不该重复巡检')
+
+    // ③ 越过窗口 → 再来一次：这正是修掉"冷却挡下的轮次滞留 6 小时"的那条路
+    clock += 6 * 60 * 1000
+    runtime.onSessionEvent(session, turnEnd(2))
+    await settle()
+    eq(runtime.state().recoverSweeps, 2, '窗口过后应再巡检一次')
+
+    runtime.dispose()
+  }],
+
   ['启动恢复：把上次没抽完的轮次从日志里捡回来（对齐上游"重启后继续抽"）', async () => {
     const ws = freshWorkspace('recover-queue')
     const llm = fakeLlm()

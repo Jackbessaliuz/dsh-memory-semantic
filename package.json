@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-semantic",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "给 meow-memory 记忆系统加一层语义检索：让\"记过的\"变成\"想得起来的\"。只读记忆库，绝不写入上游。",
   "license": "MIT",
   "repository": {

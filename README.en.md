@@ -152,6 +152,18 @@ Every knob lives in the profile patch `config:` section; no code changes needed:
 
 The plugin never errors or blocks because Ollama is absent. With `autoStart: true` it tries to start Ollama **in the background without blocking the current turn**.
 
+## Token cost (measured)
+
+The plugin adds **two small costs**. meow-memory's own overhead does **not** change — this plugin only reads its database:
+
+| Cost | Where it happens | Measured (median-length turn, 150 real turns) |
+|---|---|---|
+| One extraction per turn | background call, **not in your chat context** | ≈ 2,600 input + 240 output tokens |
+| Recall injection | inserted before your question, **counts as context** | ≤ ≈ 1,100 tokens (k=3, 1200-char cap) |
+
+Roughly 260k input + 24k output tokens per day at 100 turns/day; longer answers cost more than the median.
+Both halves can be turned off independently: `turns.live.enabled: false` stops auto-extraction (you keep the three tools), `turns.recallShadow.inject: false` stops auto-injection (already-recorded turns stay searchable). Extraction is pinned to a low reasoning effort by default, so a cheap model is fine.
+
 ## Data & privacy
 
 - **Everything stays local.** The vector index, graph and turn store live under `.dsh-semantic/` in your own workspace.
