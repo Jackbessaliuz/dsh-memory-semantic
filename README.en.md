@@ -6,6 +6,41 @@ A [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) plugin. It reads your
 
 [中文说明](README.md)
 
+> ⚠️ **The Chinese [README.md](README.md) is the source of truth** and is updated first;
+> this English version may lag behind it.
+
+## How memory runs
+
+```
+┌─ Store ───────────────────────────────────────────────────────┐
+│                                                               │
+│   Shelf A: knowledge (meow-memory)   Shelf B: raw turns (this)│
+│   ───────────────────────────────    ──────────────────────── │
+│   book  = notes the AI wrote          book = the dialogue     │
+│           (soul/user/rules/fact/             itself, verbatim  │
+│            lesson/topic/project)             + one-line label │
+│   who   = the AI, deliberately        who  = written for you, │
+│   keeps = dream (dedupe/archive)      keeps = nothing (append)│
+│   means = "what I know"               means = "what was       │
+│                                                actually said" │
+└───────────────────────────────────────────────────────────────┘
+                              │
+┌─ Find ────────────────────────┴───────────────────────────────┐
+│   Shelf A: memory_search     (keywords)                       │
+│            memory_semantic   (vector + keywords fused)        │
+│            memory_graph      (importance, topics, neighbours) │
+│   Shelf B: recall_turns      (the verbatim exchange)          │
+└───────────────────────────────────────────────────────────────┘
+                              │
+┌─ Deliver (pushed to the model) ┴─────────────────────────────┐
+│   ① first-turn long-term memory injection                     │
+│   ② action-triggered injection (rules & lessons)              │
+│   ③ cross-session handoff ("continue" in a new session)       │
+│   ④ recall injection (relevant raw turns, every turn)         │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**In one line**: meow-memory *stores*; this plugin *finds* and *delivers*.
 ---
 
 ## The problem

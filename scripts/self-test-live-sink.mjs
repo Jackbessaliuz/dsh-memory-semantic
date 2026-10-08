@@ -13,7 +13,7 @@ import {
   createSinkRuntime, registerLiveSink,
 } from '../lib/turns/live-sink.js'
 import { openTurnsDb } from '../lib/turns/schema.js'
-import { getTurn, turnIdOf, statsOf, getTriplesForTurn } from '../lib/turns/store.js'
+import { getTurn, turnIdOf, statsOf, getTriplesForTurn, enqueueExtraction, extractionQueueStats } from '../lib/turns/store.js'
 import { streamOf } from '../lib/turns/extract-runner.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -196,6 +196,70 @@ const asyncTests = [
   }],
 
   /* ── 集成：真 sqlite + 假 llm ─────────────────────────────────── */
+
+  ['启动恢复：把上次没抽完的轮次从日志里捡回来（对齐上游"重启后继续抽"）', async () => {
+    const ws = freshWorkspace('recover-queue')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({ llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [] })
+
+    // ① 造一条"上次没抽完"的队列项：模拟宿主在抽取前重启、队列留在库里
+    const db0 = openTurnsDb(ws)
+    enqueueExtraction(db0, {
+      sessionId: 'session-rec', turnIndex: 0, userSeq: 10, answerSeq: 11, workspace: ws,
+      provider: 'deepseek', model: 'deepseek-flash',
+    })
+    eq(extractionQueueStats(db0).pending, 1, '应有 1 条待抽')
+    db0.close()
+
+    // ② 注入假 loader：假装会话日志里还留着那一轮（真环境里读的是 ~/.dsh/sessions）
+    const fakeLog = () => ({
+      turns: [{ turnIndex: 0, userSeq: 10, answerSeq: 11, userText: '上次没抽完的问题', answerText: '上次没抽完的回答' }],
+    })
+    await runtime.recoverDue(ws, fakeLog)
+
+    // ③ 断言：轮次补进来了、队列状态转 succeeded、路由来自队列而不是 session
+    const db1 = openTurnsDb(ws, { readOnly: true })
+    eq(statsOf(db1).turns, 1, '轮次应被补进库')
+    const row = db1.prepare('SELECT user_text, turn_index FROM tm_turns WHERE session_id=?').get('session-rec')
+    eq(row?.user_text, '上次没抽完的问题', '补的是日志里的原文')
+    eq(extractionQueueStats(db1).pending, 0, '队列应清空')
+    eq(extractionQueueStats(db1).succeeded, 1, '应记为成功')
+    db1.close()
+    eq(llm.calls.length, 1, '恢复也应调用一次模型')
+    eq([llm.calls[0].provider, llm.calls[0].model], ['deepseek', 'deepseek-flash'], '路由取自队列表（v5）')
+    runtime.dispose()
+  }],
+
+  ['恢复：日志里也找不到那一轮 → 记成功不再重试（不做无谓烧钱）', async () => {
+    const ws = freshWorkspace('recover-missing')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({ llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [] })
+    const db0 = openTurnsDb(ws)
+    enqueueExtraction(db0, { sessionId: 'session-gone', turnIndex: 0, userSeq: 1, answerSeq: 2, workspace: ws, provider: 'p', model: 'm' })
+    db0.close()
+    await runtime.recoverDue(ws, () => ({ turns: [] }))
+    const db1 = openTurnsDb(ws, { readOnly: true })
+    eq(extractionQueueStats(db1).pending, 0, '队列应清空')
+    eq(extractionQueueStats(db1).succeeded, 1, '应记为成功（跳过而非重试）')
+    eq(llm.calls.length, 0, '不该调用模型')
+    db1.close()
+    runtime.dispose()
+  }],
+
+  ['恢复：队列表里没有路由 → 跳过（不瞎猜模型）', async () => {
+    const ws = freshWorkspace('recover-noroute')
+    const llm = fakeLlm()
+    const runtime = createSinkRuntime({ llm, cfg: normalizeLiveConfig(undefined), logger: null, embed: async () => [] })
+    const db0 = openTurnsDb(ws)
+    enqueueExtraction(db0, { sessionId: 'session-nr', turnIndex: 0, userSeq: 3, answerSeq: 4, workspace: ws })
+    db0.close()
+    await runtime.recoverDue(ws, () => ({ turns: [{ turnIndex: 0, userSeq: 3, answerSeq: 4, userText: 'q', answerText: 'a' }] }))
+    eq(llm.calls.length, 0, '没有路由就不该调用模型')
+    const db1 = openTurnsDb(ws, { readOnly: true })
+    eq(extractionQueueStats(db1).pending, 1, '留在队列等下一次（人工修好配置后还会捡）')
+    db1.close()
+    runtime.dispose()
+  }],
   ['一轮正常入库：turns / SPO / 向量 / turn_index=0', async () => {
     const ws = freshWorkspace('ok-single')
     const llm = fakeLlm()

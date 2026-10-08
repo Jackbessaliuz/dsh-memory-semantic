@@ -48,16 +48,17 @@ t('库文件落在 <workspace>/.dsh-semantic/turns.db', () => {
 })
 t('WAL 模式生效', () => eq(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal'))
 t('foreign_keys 生效', () => eq(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1))
-t('SCHEMA_VERSION = 2（m1 主表 + m2 导航）', () => eq(SCHEMA_VERSION, 2))
-t('_tm_migrations 记录 v1、v2', () => eq(db.prepare('SELECT v FROM _tm_migrations ORDER BY v').all().map((r) => r.v), [1, 2]))
+t('SCHEMA_VERSION 至少含队列与会话水位（v4+）', () => ok(SCHEMA_VERSION >= 4, ))
+t('_tm_migrations 记录连续版本（不硬编码数字）', () => eq(db.prepare('SELECT v FROM _tm_migrations ORDER BY v').all().map((r) => r.v), Array.from({ length: SCHEMA_VERSION }, (_, i) => i + 1)))
 t('migrate 幂等：再跑不重跑', () => {
   const r = migrate(db)
-  eq(r.from, 2, 'from')
-  eq(db.prepare('SELECT COUNT(*) AS n FROM _tm_migrations').get().n, 2)
+  eq(r.from, SCHEMA_VERSION, 'from')
+  eq(r.to, SCHEMA_VERSION, 'to')
+  eq(db.prepare('SELECT COUNT(*) AS n FROM _tm_migrations').get().n, SCHEMA_VERSION)
 })
-t('四张表齐全', () => {
+t('六张表齐全（含抽取队列与会话水位）', () => {
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map((r) => r.name)
-  for (const want of ['tm_turns', 'tm_vectors', 'tm_terms', 'tm_triples']) ok(names.includes(want), want)
+  for (const want of ['tm_turns', 'tm_vectors', 'tm_terms', 'tm_triples', 'tm_extraction_queue', 'tm_extraction_sessions']) ok(names.includes(want), want)
 })
 t('空库 hasTurns=false / stats 全零', () => {
   eq(hasTurns(db), false)

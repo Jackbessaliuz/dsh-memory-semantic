@@ -1,7 +1,7 @@
 {
   "name": "dsh-memory-semantic",
   "version": "0.1.0",
-  "description": "meow-memory 语义检索增强层：只读记忆库，本地 Ollama embedding (bge-m3) + BM25/向量 RRF 融合，提供 memory_semantic / memory_graph / recall_turns 三个工具；独立插件，绝不写入上游。",
+  "description": "给 meow-memory 记忆系统加一层语义检索：让\"记过的\"变成\"想得起来的\"。只读记忆库，绝不写入上游。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -47,7 +47,9 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": ["react"],
+      "inject": [
+        "react"
+      ],
       "platform": "web"
     }
   },
