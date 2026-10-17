@@ -355,9 +355,49 @@ pnpm 10+ 默认阻止安装期脚本。**本插件自己没有编译步骤**（�
         k: 3
         maxChars: 1200
         minQueryChars: 6
+    guard:                    # 防复读退化折叠（thinking-guard 并入，1.1.0）
+      enabled: true
+      dryRun: false           # 调判据时先设 true 观察一天
+      minChars: 400           # 思考块短于这个长度不看
+      minRepeats: 25          # 同一单元至少重复这么多次
+      minShare: 0.20          # 重复部分至少占尾窗句数的 20%
+      maxUnit: 30             # 算作「重复单元」的最大字符数（英文环境建议调大）
+      tailChars: 4000         # 只看思考块尾部这么长
+      foldToolSteps: true     # 带工具调用的步也折叠（含工具结果一起换成说明）
+      rotationGuard: true     # v2 判据：短句轮换 / 英文碎片
 ```
 
 **任何非法值都会安静地退回默认值**——配置写错不会让插件加载失败。
+
+---
+
+## 更新日志
+
+### 1.1.0（2026-10-18）
+
+**性能**
+- 词法召回从"每轮全量重建 BM25"迁移到 **SQLite FTS5**（中文按 bigram 入索引，与内存 BM25 同一套分词）。实测 1391 轮时每轮固定开销 **440ms → 6~17ms**，且不再随规模线性增长。
+- 升级后自动迁移：首次打开库时建 FTS 索引并回填存量轮次（1424 行约 0.7s，一次性），之后随轮次增量同步，无需手动重建。
+
+**防复读退化（thinking-guard 并入）**
+- 新增 `guard` 配置段：退化的 reasoning 块会被从**模型可见历史**里折叠（日志原文不删、人看的 transcript 不受影响）。判据与独立版 thinking-guard 一致（235 会话校准，中文逐字复读 + 英文短句轮换两把尺子）。
+- 建议首次开启时 `guard.dryRun: true` 观察一天再真折叠。
+
+**Ollama 自动拉起**
+- `autoStart` 现在在**插件启动时**就探测/点火，不再只在调用 `memory_semantic` 工具时触发；并每 5 分钟低频守护，Ollama 中途退出会被重新拉起。
+- 设置页文案同步：开着 autoStart 但 Ollama 未运行时显示"启动时自动拉起"，不再直接判"降级"。
+
+**图谱**
+- `memory_graph rebuild` 改为**后台任务**，构图分块让出事件循环（此前 820 节点 1.4s、3000 节点 13s 全程阻塞宿主）。
+- 设置页新增「重建图谱」按钮（异步、带状态、未建图时也可用）与过期提示（>7 天）。
+
+**修复**
+- 轮次 id 改为按 `(sessionId, userSeq)` 派生，与表上的 `UNIQUE(session_id, user_seq)` 对齐——消除已实证的 `UNIQUE constraint failed`（同一轮被算出两个 answerSeq 时）。
+- 写库序列（轮次 + 三元组 + 队列状态 + 水位）包进**一个事务**，失败回滚并记 `failed` 走退避——不再出现"半写的轮次 + 队列永久 pending"。
+- 合同层空白串改 `trim()` 判断（与存储层同口径），避免"合同通过 → 计费 → 存储抛错"。
+- `recoverLimit` / `guardCooldownMs` 两个旋钮补进归一化（此前用户写了配置不生效）。
+- `embedTexts` 加超时（8s）：Ollama 半死时不再永久卡住宿主串行链。
+- 融合权重接上 `ROUTE_WEIGHTS`（此前是死常量，线上一直等权）；`routes` 标签统一语义（此前 gated 分支下 vector/graph 补位会被误标为 bm25）；图谱路线只保留分数前 20%，不再用长尾稀释 RRF。
 
 ---
 

@@ -13,7 +13,7 @@ import {
   createSinkRuntime, registerLiveSink,
 } from '../lib/turns/live-sink.js'
 import { openTurnsDb } from '../lib/turns/schema.js'
-import { getTurn, turnIdOf, statsOf, getTriplesForTurn, enqueueExtraction, extractionQueueStats } from '../lib/turns/store.js'
+import { getTurn, findTurnBySeq, statsOf, getTriplesForTurn, enqueueExtraction, extractionQueueStats } from '../lib/turns/store.js'
 import { streamOf } from '../lib/turns/extract-runner.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -327,7 +327,8 @@ const asyncTests = [
     const db = openTurnsDb(ws)
     const stats = statsOf(db)
     eq([stats.turns, stats.sessions, stats.triples, stats.vectors], [1, 1, 1, 1])
-    const turn = getTurn(db, turnIdOf('session-ok', [0, 1]))
+    // 2026-10-18 S3：id 改为 (sessionId, userSeq) 派生，测试判据同步改用 findTurnBySeq
+    const turn = findTurnBySeq(db, 'session-ok', 0)
     ok(turn, '轮次应存在')
     eq([turn.turnIndex, turn.userSeq, turn.answerSeq, turn.outcome], [0, 0, 1, 'completed'])
     eq(turn.userText, '把链接线接上')
