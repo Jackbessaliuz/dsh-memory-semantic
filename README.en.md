@@ -178,6 +178,34 @@ The plugin adds **two small costs**. meow-memory's own overhead does **not** cha
 Roughly 260k input + 24k output tokens per day at 100 turns/day; longer answers cost more than the median.
 Both halves can be turned off independently: `turns.live.enabled: false` stops auto-extraction (you keep the three tools), `turns.recallShadow.inject: false` stops auto-injection (already-recorded turns stay searchable). Extraction is pinned to a low reasoning effort by default, so a cheap model is fine.
 
+## Changelog
+
+### 1.1.0 (2026-10-18)
+
+**Performance**
+- Lexical recall moved from "rebuild BM25 over the whole store every turn" to **SQLite FTS5** (Chinese indexed as bigrams, the same tokenization the in-memory BM25 used). Measured at 1,391 turns the fixed per-turn cost went **440 ms → 6–17 ms**, and it no longer grows linearly with the store.
+- Migration is automatic: the first time the database is opened it builds the FTS index and backfills existing turns (≈0.7 s for 1,424 rows, one-off), then stays in sync incrementally. No manual rebuild.
+
+**Degeneration guard (thinking-guard merged in)**
+- New `guard` config section: degenerate reasoning blocks are folded out of the **model-visible history** (the log keeps the original text; the human-facing transcript is unaffected). The criteria are the standalone thinking-guard's (calibrated on 235 sessions, one ruler for Chinese verbatim repetition and one for short English sentence rotation).
+- Enabling it for the first time with `guard.dryRun: true` for a day is recommended before real folding.
+
+**Ollama auto-start**
+- `autoStart` now probes/spawns **when the plugin starts**, not only when the `memory_semantic` tool is called, and a low-frequency watchdog re-spawns Ollama every 5 minutes if it exits.
+- Settings-page copy updated: with autoStart on but Ollama not running it now says "starts automatically on launch" instead of reporting a degraded state.
+
+**Graph**
+- `memory_graph rebuild` is now a **background task**, building in chunks that yield the event loop (previously 1.4 s for 820 nodes and 13 s for 3,000 nodes, blocking the host throughout).
+- New "Rebuild graph" button on the settings page (async, with state, usable even before a graph exists) and a staleness hint (> 7 days).
+
+**Fixes**
+- Turn ids are derived from `(sessionId, userSeq)`, matching the table's `UNIQUE(session_id, user_seq)` — this removes the observed `UNIQUE constraint failed` when two answerSeqs were computed for the same turn.
+- The write sequence (turn + triples + queue state + watermark) runs in **one transaction**; on failure it rolls back and records `failed` with backoff — no more "half-written turn + permanently pending queue".
+- Blank-string checks in the contract layer now use `trim()`, matching the storage layer, so a contract can no longer pass and then have storage throw.
+- `recoverLimit` / `guardCooldownMs` added to normalization (previously they could be set and silently did nothing).
+- `embedTexts` gained a timeout (8 s): a half-dead Ollama no longer blocks the host's serial chain forever.
+- Fusion weights now actually use `ROUTE_WEIGHTS` (previously a dead constant, so production ran equal-weight); `routes` labels are consistent (the gated branch used to mislabel vector/graph backfill as bm25); the graph route keeps only the top 20% by score instead of letting the long tail dilute RRF.
+
 ## Data & privacy
 
 - **Everything stays local.** The vector index, graph and turn store live under `.dsh-semantic/` in your own workspace.
