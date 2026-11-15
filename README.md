@@ -1,6 +1,6 @@
 # dsh-memory-semantic
 
-> 给 [meow-memory](https://www.npmjs.com/package/meow-memory) 记忆系统加一层**语义检索**：让"记过的"变成"想得起来的"。
+> 给 [meow-memory](https://github.com/Phant0Meow/dsh-meow-memory) 记忆系统加一层**语义检索**：让"记过的"变成"想得起来的"。
 
 一个 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）插件。它**只读**记忆库，在本机建向量索引，给 AI 补上三件事：**语义检索**、**记忆图谱**、**对话原文召回**。
 
@@ -298,7 +298,7 @@ pnpm 10+ 默认阻止安装期脚本。**本插件自己没有编译步骤**（�
 
 ### ③ 装完没效果？
 
-- **本插件必须和 [meow-memory](https://www.npmjs.com/package/meow-memory) 一起用**：它没有写入能力，记忆库里没东西时，可检索的内容自然是空的；
+- **本插件必须和 [meow-memory](https://github.com/Phant0Meow/dsh-meow-memory) 一起用**：它没有写入能力，记忆库里没东西时，可检索的内容自然是空的；
 - 第一次调用会**全量建索引**（几百条通常几十秒），之后是增量补嵌，不用管；
 - 语义一路需要 **Ollama + `bge-m3`**；没装会自动降级成**纯关键词检索**——能用，但"换个说法"就不好找了。
 
