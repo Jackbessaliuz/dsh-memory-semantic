@@ -98,3 +98,57 @@ export async function extractWithRetry(key, messages, options = {}) {
   }
   return last
 }
+
+/**
+ * 通用版：任意 tool schema + 任意解析器（2026-11-19 为"事实索引一键构建"加的）。
+ * extractOnce/extractWithRetry 是**轮次抽取专用**（硬编码 EXTRACTION_TOOL），
+ * 事实抽取要另一套 schema，所以把"调用+取参+解析"抽成参数。
+ *
+ * @param {string} key API key
+ * @param {Array} messages
+ * @param {{tool:object, parse:(raw:string)=>any, attempts?:number, ...}} options
+ * @returns {Promise<{ok:boolean, via:string, result:any, usage:object, error:string}>}
+ */
+export async function extractToolOnce(key, messages, options = {}) {
+  const base = options.base ?? DEFAULT_BASE
+  const model = options.model ?? DEFAULT_MODEL
+  const effort = options.effort ?? DEFAULT_EFFORT
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS
+  if (!options.tool) throw new Error('extractToolOnce: 需要 options.tool')
+  const json = await callCompletion(key, {
+    model,
+    messages,
+    // 兼容两种形态：内层 {name,description,parameters}，或整体 {type,function:{...}}
+    tools: [{ type: 'function', function: options.tool?.function ?? options.tool }],
+    temperature: 0,
+    max_tokens: maxTokens,
+    ...(effort ? { reasoning_effort: effort } : {}),
+  }, base)
+  const usage = json.usage ?? {}
+  const message = json.choices?.[0]?.message ?? {}
+  const call = message.tool_calls?.[0]
+  const raw = call ? String(call.function?.arguments ?? '') : stripCodeFence(message.content ?? '')
+  const via = call ? 'tool' : 'content'
+  if (!raw) return { ok: false, via, usage, error: `既没调用工具也没给正文（finish_reason=${json.choices?.[0]?.finish_reason}）` }
+  try {
+    return { ok: true, via, result: options.parse ? options.parse(raw) : JSON.parse(raw), usage }
+  } catch (error) {
+    return { ok: false, via, usage, error: `解析失败（${via}）：${error.message}` }
+  }
+}
+
+/** 通用版带重试。 */
+export async function extractToolWithRetry(key, messages, options = {}) {
+  const attempts = options.attempts ?? 2
+  let last
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      last = await extractToolOnce(key, messages, options)
+      if (last.ok) return last
+    } catch (error) {
+      last = { ok: false, usage: {}, error: error.message }
+    }
+    if (i < attempts) await new Promise((resolve) => setTimeout(resolve, 800 * i))
+  }
+  return last
+}
